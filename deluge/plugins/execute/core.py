@@ -6,11 +6,6 @@
 # the additional special exception to link portions of this program with the OpenSSL library.
 # See LICENSE for more details.
 #
-#Edited to simplify
-#Removed ability to use Quotes in command
-#Removed ability to use <> to braket labels
-#Converted arguments to uft-8 to allow for linux functionality
-#
 
 import hashlib
 import logging
@@ -70,7 +65,7 @@ class Core(CorePluginBase):
         event_manager = component.get("EventManager")
         self.registered_events = {}
         self.preremoved_cache = {}
-
+		
         # Go through the commands list and register event handlers
         for command in self.config["commands"]:
             event = command[EXECUTE_EVENT]
@@ -134,7 +129,7 @@ class Core(CorePluginBase):
                     log.warn("stdout: %s", stdout)
                 if stderr:
                     log.warn("stderr: %s", stderr)
-
+        
         log.debug("EXECUTE: Start of new code")
         #get label from torrent
         get_label = component.get("Core").get_torrent_status(torrent_id,["label"])
@@ -144,43 +139,49 @@ class Core(CorePluginBase):
         log.debug("EXECUTE: Starting the loop of commands. Label marked as: %s", label)
         for command in self.config["commands"]:
             log.debug("EXECUTE: Command is as follows: %s", command)
-            ##Edited due to label not being a deciding factor on which script to use
-            ##if command[EXECUTE_EVENT] == event and command[EXECUTE_LABEL].upper() == label.upper():
-            ##    log.debug("EXECUTE: Label and event have been matched.")
-            if command[EXECUTE_EVENT] == event:
-                log.debug("EXECUTE: Event have been matched.")
+            if command[EXECUTE_EVENT] == event and command[EXECUTE_LABEL].upper() == label.upper():
+                log.debug("EXECUTE: Label and event have been matched.")
                 delay = command[EXECUTE_DELAY]
                 if delay.isdigit():
                    log.debug("EXECUTE: Going to delay the script now by %s seconds.", delay)
                    time.sleep(float(delay))
                 else:
                    log.debug("EXECUTE: Delay is not a number, so delay was not run. Current delay is: %s", delay)
-
-
-                if isinstance(torrent_name, unicode):
-                    log.warn("EXECUTE: torrent_name was unicode")
-                    torrent_name = torrent_name.encode('utf-8')
+				   
                 # Mark args based on params
                 cmd = command[EXECUTE_COMMAND]
                 log.debug("EXECUTE: Raw Command: %s", cmd)
-                cmd_args = [torrent_id.encode('utf-8'), torrent_name.encode('utf-8'), download_location.encode('utf-8'), label.encode('utf-8')]
-                log.warn("EXECUTE: Command processed. Command: %s; Arguments: %s", cmd, cmd_args)
-
+                cmd = cmd.replace("<id>",torrent_id)
+                cmd = cmd.replace("<na>",torrent_name)
+                cmd = cmd.replace("<dl>",download_location)
+                cmd = cmd.replace("<lb>",label)
+                cmd_args = ""
+                if cmd.count('"') > 1: # if there are two quotations, we need to get everything inside the quotes as the cmd
+                    cmd_groups = cmd.split('"')
+                    cmd_groups = '"'.join(cmd_groups[:2]), '"'.join(cmd_groups[2:])
+                    cmd = cmd_groups[0] + '"'
+                    cmd_args = cmd_groups[1]
+                    if len(cmd_args) > 0:
+                        if cmd_args[0] == " ": # if the args start with a space, get rid of it
+                            cmd_args = cmd_args[1:]
+                else:
+                    if " " in cmd:
+                        cmd_args = cmd.split(" ", 1)[1]
+                        cmd = cmd.split(" ", 1)[0]
+                log.debug("EXECUTE: Command processed. Command: %s; Arguments: %s", cmd, cmd_args)
                 if command[EXECUTE_TYPE] == "script":
                    log.debug("EXECUTE: This is a script")
                    cmd = os.path.expandvars(cmd)
                    cmd = os.path.expanduser(cmd)
-
-                   ## EDITED 180514 Never to be run on windows commented out
+                   
                    #cmd_args = [torrent_id, torrent_name, download_location]
-                   ##if windows_check:
-                    ##   # Escape ampersand on windows (see #2784)
-                    ##   cmd_args = [cmd_args.replace("&", "^^^&") for cmd_arg in cmd_args]
-                    ##   cmd = [cmd.replace("&", "^^^&") for cmd_arg in cmd]
-
-                   ##Output is command, torrent id, torrent name, download locaation, label
+                   if windows_check:
+                       # Escape ampersand on windows (see #2784)
+                       cmd_args = [cmd_args.replace("&", "^^^&") for cmd_arg in cmd_args]
+                       cmd = [cmd.replace("&", "^^^&") for cmd_arg in cmd]
+                   
                    if os.path.isfile(cmd) and os.access(cmd, os.X_OK):
-                       log.warn("EXECUTE: Running command with args: %s %s", cmd, cmd_args)
+                       log.debug("EXECUTE: Running command with args: %s %s", cmd, cmd_args)
                        d = getProcessOutputAndValue(cmd, cmd_args, env=os.environ)
                        d.addCallback(log_error, cmd)
                    else:
@@ -191,7 +192,7 @@ class Core(CorePluginBase):
                     req = urllib2.Request(url)
                     response = urllib2.urlopen(req)
                     the_page = response.read()
-                    log.warn("EXECUTE: URL response page: %s", the_page)
+                    log.debug("EXECUTE: URL response page: %s", the_page)
 
     def disable(self):
         self.config.save()
